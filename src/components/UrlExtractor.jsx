@@ -8,92 +8,30 @@ export default function UrlExtractor() {
   const [isLoading, setIsLoading] = useState(false);
   const [existingFile, setExistingFile] = useState(null);
   const [isGoogleAuthed, setIsGoogleAuthed] = useState(false);
+  const [tokenClient, setTokenClient] = useState(null);
   const SPREADSHEET_ID = import.meta.env.VITE_GOOGLE_SHEET_ID;
 
   useEffect(() => {
-    const loadGoogleAPI = async () => {
-      try {
-        // Load the Google API script
-        await new Promise((resolve, reject) => {
-          const script = document.createElement('script');
-          script.src = 'https://apis.google.com/js/api.js';
-          script.onload = resolve;
-          script.onerror = reject;
-          document.body.appendChild(script);
-        });
-
-        // Load the client and auth2 libraries
-        await new Promise((resolve, reject) => {
-          window.gapi.load('client:auth2', resolve);
-        });
-
-        await initClient();
-      } catch (error) {
-        console.error('Error loading Google API:', error);
-        setError('Failed to load Google API: ' + error.message);
-      }
-    };
-
-    loadGoogleAPI();
+    // Initialize the tokenClient
+    const client = google.accounts.oauth2.initTokenClient({
+      client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
+      scope: 'https://www.googleapis.com/auth/spreadsheets',
+      callback: (tokenResponse) => {
+        if (tokenResponse && tokenResponse.access_token) {
+          setIsGoogleAuthed(true);
+          // Store the token for later use
+          localStorage.setItem('gapi_access_token', tokenResponse.access_token);
+        }
+      },
+    });
+    setTokenClient(client);
   }, []);
 
-  const initClient = async () => {
-    try {
-      console.log('Initializing Google API client...');
-      const initOptions = {
-      apiKey: import.meta.env.VITE_GOOGLE_API_KEY,
-      clientId: import.meta.env.VITE_GOOGLE_CLIENT_ID,
-      discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4'],
-      scope: 'https://www.googleapis.com/auth/spreadsheets'
-    };
-      
-      console.log('Init options:', initOptions);
-      await window.gapi.client.init(initOptions);
-      
-      // Initialize auth2 explicitly
-      await window.gapi.auth2.init({
-        client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID
-      });
-      
-      const auth = window.gapi.auth2.getAuthInstance();
-      if (!auth) {
-        throw new Error('Failed to get auth instance');
-      }
-      
-      auth.isSignedIn.listen(updateSigninStatus);
-      updateSigninStatus(auth.isSignedIn.get());
-      
-      console.log('Google API client initialized successfully');
-    } catch (error) {
-      console.error('Error initializing Google API client:', error);
-      setError('Failed to initialize Google API client: ' + error.message);
-    }
-  };
-
-  const updateSigninStatus = (isSignedIn) => {
-    setIsGoogleAuthed(isSignedIn);
-  };
-
-  const handleGoogleAuth = async () => {
-    try {
-      if (!window.gapi || !window.gapi.auth2) {
-        console.error('Google API not loaded');
-        setError('Google API not initialized properly. Please refresh the page.');
-        return;
-      }
-
-      const auth = window.gapi.auth2.getAuthInstance();
-      if (!auth) {
-        console.error('Auth instance not found');
-        setError('Authentication service not initialized properly.');
-        return;
-      }
-
-      await auth.signIn();
-      console.log('Sign in successful');
-    } catch (error) {
-      console.error('Sign in error:', error);
-      setError('Failed to sign in with Google: ' + error.message);
+  const handleGoogleAuth = () => {
+    if (tokenClient) {
+      tokenClient.requestAccessToken();
+    } else {
+      setError('Google authentication not initialized properly');
     }
   };
 
@@ -101,6 +39,11 @@ export default function UrlExtractor() {
     if (!extractedData || !isGoogleAuthed) return;
 
     try {
+      const accessToken = localStorage.getItem('gapi_access_token');
+      if (!accessToken) {
+        throw new Error('No access token available');
+      }
+
       // Parse the extracted data
       const dataLines = extractedData.split('\n');
       const dataObject = {};
@@ -118,51 +61,63 @@ export default function UrlExtractor() {
       dataObject['Extraction Date'] = new Date().toLocaleString();
       dataObject['Source URL'] = url;
 
-      try {
-        // First, get the current data to find the next empty row
-        const response = await window.gapi.client.sheets.spreadsheets.values.get({
-          spreadsheetId: SPREADSHEET_ID,
-          range: 'Sheet1!A:A'  // Get all values in column A
-        });
-
-        const numRows = response.result.values ? response.result.values.length : 0;
-        const nextRow = numRows + 1;  // Next empty row
-        const headers = Object.keys(dataObject);
-        const values = Object.values(dataObject);
-
-        // If this is the first entry, add headers
-        if (nextRow === 1) {
-          await window.gapi.client.sheets.spreadsheets.values.update({
-            spreadsheetId: SPREADSHEET_ID,
-            range: 'Sheet1!A1',
-            valueInputOption: 'RAW',
-            resource: {
-              values: [headers]
-            }
-          });
-        }
-
-        // Append the new data in the next row
-        await window.gapi.client.sheets.spreadsheets.values.append({
-          spreadsheetId: SPREADSHEET_ID,
-          range: `Sheet1!A${nextRow}`,
-          valueInputOption: 'RAW',
-          insertDataOption: 'INSERT_ROWS',
-          resource: {
-            values: [values]
+      // First, get the current data to find the next empty row
+      const response = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/Sheet1!A:A`,
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
           }
-        });
+        }
+      );
 
-        // Open the spreadsheet in a new tab
-        window.open(`https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}`);
-        
-      } catch (error) {
-        console.error('Error writing to Google Sheets:', error);
-        setError('Failed to write to Google Sheets. Please check your permissions.');
+      if (!response.ok) {
+        throw new Error('Failed to fetch sheet data');
       }
+
+      const data = await response.json();
+      const numRows = data.values ? data.values.length : 0;
+      const nextRow = numRows + 1;
+      const values = [Object.values(dataObject)];
+
+      // If this is the first row, add headers
+      if (nextRow === 1) {
+        const headers = [Object.keys(dataObject)];
+        await fetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/Sheet1!A1:${String.fromCharCode(65 + headers[0].length)}1?valueInputOption=RAW`,
+          {
+            method: 'PUT',
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ values: headers })
+          }
+        );
+      }
+
+      // Append the new data
+      const appendResponse = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/Sheet1!A${nextRow}:append?valueInputOption=RAW`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ values })
+        }
+      );
+
+      if (!appendResponse.ok) {
+        throw new Error('Failed to append data to sheet');
+      }
+
+      // Open the spreadsheet in a new tab
+      window.open(`https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}`);
     } catch (err) {
-      console.error('Error processing data:', err);
-      setError('Failed to process data for Google Sheets export');
+      console.error('Error exporting to Google Sheets:', err);
+      setError('Failed to export to Google Sheets: ' + err.message);
     }
   };
 
