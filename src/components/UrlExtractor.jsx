@@ -9,22 +9,31 @@ export default function UrlExtractor() {
   const [existingFile, setExistingFile] = useState(null);
   const [isGoogleAuthed, setIsGoogleAuthed] = useState(false);
   const [tokenClient, setTokenClient] = useState(null);
-  const SPREADSHEET_ID = import.meta.env.VITE_GOOGLE_SHEET_ID;
+
+  // Extract just the ID if full URL is provided
+  const getSpreadsheetId = (idOrUrl) => {
+    if (!idOrUrl) return null;
+    const matches = idOrUrl.match(/[-\w]{25,}/);
+    return matches ? matches[0] : idOrUrl;
+  };
+  
+  const SPREADSHEET_ID = getSpreadsheetId(import.meta.env.VITE_GOOGLE_SHEET_ID);
 
   useEffect(() => {
     // Initialize the tokenClient
-    const client = google.accounts.oauth2.initTokenClient({
-      client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
-      scope: 'https://www.googleapis.com/auth/spreadsheets',
-      callback: (tokenResponse) => {
-        if (tokenResponse && tokenResponse.access_token) {
-          setIsGoogleAuthed(true);
-          // Store the token for later use
-          localStorage.setItem('gapi_access_token', tokenResponse.access_token);
-        }
-      },
-    });
-    setTokenClient(client);
+    if (window.google) {
+      const client = google.accounts.oauth2.initTokenClient({
+        client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
+        scope: 'https://www.googleapis.com/auth/spreadsheets',
+        callback: (tokenResponse) => {
+          if (tokenResponse && tokenResponse.access_token) {
+            setIsGoogleAuthed(true);
+            localStorage.setItem('gapi_access_token', tokenResponse.access_token);
+          }
+        },
+      });
+      setTokenClient(client);
+    }
   }, []);
 
   const handleGoogleAuth = () => {
@@ -61,9 +70,11 @@ export default function UrlExtractor() {
       dataObject['Extraction Date'] = new Date().toLocaleString();
       dataObject['Source URL'] = url;
 
+      const sheetName = encodeURIComponent('Police Homicide Data Update');
+
       // First, get the current data to find the next empty row
       const response = await fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/Sheet1!A:A`,
+        `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${sheetName}!A:A`,
         {
           headers: {
             'Authorization': `Bearer ${accessToken}`,
@@ -78,13 +89,12 @@ export default function UrlExtractor() {
       const data = await response.json();
       const numRows = data.values ? data.values.length : 0;
       const nextRow = numRows + 1;
-      const values = [Object.values(dataObject)];
 
       // If this is the first row, add headers
       if (nextRow === 1) {
         const headers = [Object.keys(dataObject)];
         await fetch(
-          `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/Sheet1!A1:${String.fromCharCode(65 + headers[0].length)}1?valueInputOption=RAW`,
+          `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${sheetName}!A1?valueInputOption=RAW`,
           {
             method: 'PUT',
             headers: {
@@ -97,8 +107,9 @@ export default function UrlExtractor() {
       }
 
       // Append the new data
+      const values = [Object.values(dataObject)];
       const appendResponse = await fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/Sheet1!A${nextRow}:append?valueInputOption=RAW`,
+        `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${sheetName}!A${nextRow}:append?valueInputOption=RAW`,
         {
           method: 'POST',
           headers: {
@@ -121,7 +132,6 @@ export default function UrlExtractor() {
     }
   };
 
-  // Your existing handleExportToExcel function
   const handleExportToExcel = () => {
     if (!extractedData) return;
 
