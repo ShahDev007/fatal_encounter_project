@@ -1,6 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import * as XLSX from 'xlsx';
-
 
 export default function UrlExtractor() {
   const [url, setUrl] = useState("");
@@ -8,11 +7,120 @@ export default function UrlExtractor() {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [existingFile, setExistingFile] = useState(null);
+  const [isGoogleAuthed, setIsGoogleAuthed] = useState(false);
+  const SPREADSHEET_ID = process.env.REACT_APP_GOOGLE_SHEET_ID;
 
+  useEffect(() => {
+    loadGoogleAPI();
+  }, []);
+
+  const loadGoogleAPI = () => {
+    const script = document.createElement('script');
+    script.src = 'https://apis.google.com/js/api.js';
+    script.onload = () => {
+      window.gapi.load('client:auth2', initClient);
+    };
+    document.body.appendChild(script);
+  };
+
+  const initClient = () => {
+    window.gapi.client.init({
+      apiKey: process.env.REACT_APP_GOOGLE_API_KEY,
+      clientId: process.env.REACT_APP_GOOGLE_CLIENT_ID,
+      discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4'],
+      scope: 'https://www.googleapis.com/auth/spreadsheets'
+    }).then(() => {
+      window.gapi.auth2.getAuthInstance().isSignedIn.listen(updateSigninStatus);
+      updateSigninStatus(window.gapi.auth2.getAuthInstance().isSignedIn.get());
+    }).catch(error => {
+      console.error('Error initializing Google API client:', error);
+      setError('Failed to initialize Google API client');
+    });
+  };
+
+  const updateSigninStatus = (isSignedIn) => {
+    setIsGoogleAuthed(isSignedIn);
+  };
+
+  const handleGoogleAuth = () => {
+    if (!isGoogleAuthed) {
+      window.gapi.auth2.getAuthInstance().signIn();
+    }
+  };
+
+  const handleExportToGoogleSheets = async () => {
+    if (!extractedData || !isGoogleAuthed) return;
+
+    try {
+      // Parse the extracted data
+      const dataLines = extractedData.split('\n');
+      const dataObject = {};
+      
+      dataLines.forEach(line => {
+        if (line.includes(":**")) {
+          const [field, value] = line.split(":**").map(str => str.trim());
+          const cleanField = field.replace("**", "").replace("_", " ");
+          const cleanValue = value.replace("**", "");
+          dataObject[cleanField] = cleanValue;
+        }
+      });
+
+      // Add timestamp and URL
+      dataObject['Extraction Date'] = new Date().toLocaleString();
+      dataObject['Source URL'] = url;
+
+      try {
+        // First, get the current data to find the next empty row
+        const response = await window.gapi.client.sheets.spreadsheets.values.get({
+          spreadsheetId: SPREADSHEET_ID,
+          range: 'Sheet1!A:A'  // Get all values in column A
+        });
+
+        const numRows = response.result.values ? response.result.values.length : 0;
+        const nextRow = numRows + 1;  // Next empty row
+        const headers = Object.keys(dataObject);
+        const values = Object.values(dataObject);
+
+        // If this is the first entry, add headers
+        if (nextRow === 1) {
+          await window.gapi.client.sheets.spreadsheets.values.update({
+            spreadsheetId: SPREADSHEET_ID,
+            range: 'Sheet1!A1',
+            valueInputOption: 'RAW',
+            resource: {
+              values: [headers]
+            }
+          });
+        }
+
+        // Append the new data in the next row
+        await window.gapi.client.sheets.spreadsheets.values.append({
+          spreadsheetId: SPREADSHEET_ID,
+          range: `Sheet1!A${nextRow}`,
+          valueInputOption: 'RAW',
+          insertDataOption: 'INSERT_ROWS',
+          resource: {
+            values: [values]
+          }
+        });
+
+        // Open the spreadsheet in a new tab
+        window.open(`https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}`);
+        
+      } catch (error) {
+        console.error('Error writing to Google Sheets:', error);
+        setError('Failed to write to Google Sheets. Please check your permissions.');
+      }
+    } catch (err) {
+      console.error('Error processing data:', err);
+      setError('Failed to process data for Google Sheets export');
+    }
+  };
+
+  // Your existing handleExportToExcel function
   const handleExportToExcel = () => {
     if (!extractedData) return;
 
-    // Parse the extracted data into an object
     const dataLines = extractedData.split('\n');
     const dataObject = {};
     
@@ -25,13 +133,11 @@ export default function UrlExtractor() {
       }
     });
 
-    // Add timestamp and URL
     dataObject['Extraction Date'] = new Date().toLocaleString();
     dataObject['Source URL'] = url;
 
     let existingData = [];
     
-    // If we have a selected file, read its data
     if (existingFile) {
       const reader = new FileReader();
       reader.onload = (e) => {
@@ -40,59 +146,53 @@ export default function UrlExtractor() {
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
         existingData = XLSX.utils.sheet_to_json(firstSheet);
         
-        // Add new data
         existingData.push(dataObject);
         
-        // Create new worksheet with combined data
         const ws = XLSX.utils.json_to_sheet(existingData);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Fatal Encounters Data");
         
-        // Save to the same filename
         XLSX.writeFile(wb, existingFile.name);
       };
       reader.readAsArrayBuffer(existingFile);
     } else {
-      // If no file selected, create new one
       existingData = [dataObject];
       const ws = XLSX.utils.json_to_sheet(existingData);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Fatal Encounters Data");
       XLSX.writeFile(wb, 'fatal-encounters-data.xlsx');
     }
-};
-
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     setExtractedData(null);
-    setExistingFile(null);
     setIsLoading(true);
 
     try {
-        const response = await fetch("/api/upload", {  // Make sure this matches exactly
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ url }),
-        });
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ url }),
+      });
 
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || "Network response was not ok");
-        }
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Network response was not ok");
+      }
 
-        const data = await response.json();
-        setExtractedData(data.extractedData);
+      const data = await response.json();
+      setExtractedData(data.extractedData);
     } catch (err) {
-        console.error("Error details:", err);
-        setError("Failed to extract data. Please check the URL and try again.");
+      console.error("Error details:", err);
+      setError("Failed to extract data. Please check the URL and try again.");
     } finally {
-        setIsLoading(false);
+      setIsLoading(false);
     }
-};
+  };
 
   return (
     <div style={{ padding: "20px", maxWidth: "800px", margin: "0 auto" }}>
@@ -158,7 +258,22 @@ export default function UrlExtractor() {
           }}>
             {extractedData}
           </pre>
-          <div style={{ marginTop: "16px", display: "flex", gap: "8px", alignItems: "center" }}>
+          <div style={{ marginTop: "16px", display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+            {/* Google Sheets Export Button */}
+            <button
+              onClick={isGoogleAuthed ? handleExportToGoogleSheets : handleGoogleAuth}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: '#4285F4',
+                color: 'white',
+                borderRadius: '4px',
+                cursor: 'pointer'
+              }}
+            >
+              {isGoogleAuthed ? 'Export to Google Sheets' : 'Sign in to Google'}
+            </button>
+
+            {/* Existing Excel Export UI */}
             <input
               type="file"
               accept=".xlsx"
@@ -178,7 +293,7 @@ export default function UrlExtractor() {
                 cursor: 'pointer'
               }}
             >
-              {existingFile ? 'Append to Selected File' : 'Export to New File'}
+              {existingFile ? 'Append to Selected File' : 'Export to Excel'}
             </button>
           </div>
         </div>
