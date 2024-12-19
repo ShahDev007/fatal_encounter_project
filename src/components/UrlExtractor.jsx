@@ -8,7 +8,7 @@ export default function UrlExtractor() {
   const [isLoading, setIsLoading] = useState(false);
   const [existingFile, setExistingFile] = useState(null);
   const [isGoogleAuthed, setIsGoogleAuthed] = useState(false);
-  const SPREADSHEET_ID = process.env.VITE_GOOGLE_SHEET_ID;
+  const SPREADSHEET_ID = import.meta.env.VITE_GOOGLE_SHEET_ID;
 
   useEffect(() => {
     const loadGoogleAPI = async () => {
