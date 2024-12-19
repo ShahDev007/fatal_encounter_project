@@ -73,11 +73,11 @@ export default function UrlExtractor() {
       const sheetName = encodeURIComponent('Police Homicide Data Update');
 
       // First, get the current data to find the next empty row
-      console.log('Making API request with:', {
-        spreadsheetId: SPREADSHEET_ID,
-        sheetName: sheetName,
-        accessToken: accessToken.substring(0, 10) + '...' // Log first 10 chars for debugging
-      });
+      // console.log('Making API request with:', {
+      //   spreadsheetId: SPREADSHEET_ID,
+      //   sheetName: sheetName,
+      //   accessToken: accessToken.substring(0, 10) + '...' // Log first 10 chars for debugging
+      // });
 
       const response = await fetch(
         `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/'${sheetName}'!A:A`,
@@ -98,11 +98,11 @@ export default function UrlExtractor() {
       const numRows = data.values ? data.values.length : 0;
       const nextRow = numRows + 1;
       
-      console.log('Current sheet data:', {
-        existingRows: numRows,
-        nextRowToAdd: nextRow,
-        newData: values
-      });
+      // console.log('Current sheet data:', {
+      //   existingRows: numRows,
+      //   nextRowToAdd: nextRow,
+      //   newData: values
+      // });
 
       // If this is the first row, add headers
       if (nextRow === 1) {
