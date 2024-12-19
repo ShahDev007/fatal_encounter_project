@@ -70,7 +70,7 @@ export default function UrlExtractor() {
       dataObject['Extraction Date'] = new Date().toLocaleString();
       dataObject['Source URL'] = url;
 
-      const sheetName = encodeURIComponent('Police Homicide Data Update');
+      const sheetName = 'Police Homicide Data Update';
 
       // First, get the current data to find the next empty row
       // console.log('Making API request with:', {
