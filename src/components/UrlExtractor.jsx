@@ -20,32 +20,20 @@ export default function UrlExtractor() {
   const SPREADSHEET_ID = getSpreadsheetId(import.meta.env.VITE_GOOGLE_SHEET_ID);
 
   useEffect(() => {
-    const initializeGoogleAuth = async () => {
-      // Wait for the Google API to load
-      if (!window.google || !window.gapi) {
-        setTimeout(initializeGoogleAuth, 100);
-        return;
-      }
-
-      try {
-        const client = google.accounts.oauth2.initTokenClient({
-          client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
-          scope: 'https://www.googleapis.com/auth/spreadsheets',
-          callback: (tokenResponse) => {
-            if (tokenResponse && tokenResponse.access_token) {
-              setIsGoogleAuthed(true);
-              localStorage.setItem('gapi_access_token', tokenResponse.access_token);
-            }
-          },
-        });
-        setTokenClient(client);
-      } catch (error) {
-        console.error('Error initializing Google auth:', error);
-        setError('Failed to initialize Google authentication');
-      }
-    };
-
-    initializeGoogleAuth();
+    // Initialize the tokenClient
+    if (window.google) {
+      const client = google.accounts.oauth2.initTokenClient({
+        client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
+        scope: 'https://www.googleapis.com/auth/spreadsheets',
+        callback: (tokenResponse) => {
+          if (tokenResponse && tokenResponse.access_token) {
+            setIsGoogleAuthed(true);
+            localStorage.setItem('gapi_access_token', tokenResponse.access_token);
+          }
+        },
+      });
+      setTokenClient(client);
+    }
   }, []);
 
   const handleGoogleAuth = () => {
