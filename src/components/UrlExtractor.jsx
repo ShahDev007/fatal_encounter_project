@@ -1,16 +1,73 @@
 import { useState } from "react";
+import * as XLSX from 'xlsx';
+
 
 export default function UrlExtractor() {
   const [url, setUrl] = useState("");
   const [extractedData, setExtractedData] = useState(null);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [existingFile, setExistingFile] = useState(null);
+
+  const handleExportToExcel = () => {
+    if (!extractedData) return;
+
+    // Parse the extracted data into an object
+    const dataLines = extractedData.split('\n');
+    const dataObject = {};
+    
+    dataLines.forEach(line => {
+      if (line.includes(":**")) {
+        const [field, value] = line.split(":**").map(str => str.trim());
+        const cleanField = field.replace("**", "").replace("_", " ");
+        const cleanValue = value.replace("**", "");
+        dataObject[cleanField] = cleanValue;
+      }
+    });
+
+    // Add timestamp and URL
+    dataObject['Extraction Date'] = new Date().toLocaleString();
+    dataObject['Source URL'] = url;
+
+    let existingData = [];
+    
+    // If we have a selected file, read its data
+    if (existingFile) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        existingData = XLSX.utils.sheet_to_json(firstSheet);
+        
+        // Add new data
+        existingData.push(dataObject);
+        
+        // Create new worksheet with combined data
+        const ws = XLSX.utils.json_to_sheet(existingData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Fatal Encounters Data");
+        
+        // Save to the same filename
+        XLSX.writeFile(wb, existingFile.name);
+      };
+      reader.readAsArrayBuffer(existingFile);
+    } else {
+      // If no file selected, create new one
+      existingData = [dataObject];
+      const ws = XLSX.utils.json_to_sheet(existingData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Fatal Encounters Data");
+      XLSX.writeFile(wb, 'fatal-encounters-data.xlsx');
+    }
+};
+
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    // console.log("Form submitted with URL:", url);
     setError("");
     setExtractedData(null);
+    setExistingFile(null);
     setIsLoading(true);
 
     try {
@@ -101,6 +158,29 @@ export default function UrlExtractor() {
           }}>
             {extractedData}
           </pre>
+          <div style={{ marginTop: "16px", display: "flex", gap: "8px", alignItems: "center" }}>
+            <input
+              type="file"
+              accept=".xlsx"
+              onChange={(e) => setExistingFile(e.target.files[0])}
+              style={{ maxWidth: "200px" }}
+            />
+            <button
+              onClick={handleExportToExcel}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: '#10B981',
+                color: 'white',
+                borderRadius: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                cursor: 'pointer'
+              }}
+            >
+              {existingFile ? 'Append to Selected File' : 'Export to New File'}
+            </button>
+          </div>
         </div>
       )}
     </div>
