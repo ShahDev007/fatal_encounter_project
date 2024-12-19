@@ -8,7 +8,7 @@ export default function UrlExtractor() {
   const [isLoading, setIsLoading] = useState(false);
   const [existingFile, setExistingFile] = useState(null);
   const [isGoogleAuthed, setIsGoogleAuthed] = useState(false);
-  const SPREADSHEET_ID = import.meta.env.VITE_GOOGLE_SHEET_ID;
+  const SPREADSHEET_ID = process.env.VITE_GOOGLE_SHEET_ID;
 
   useEffect(() => {
     const loadGoogleAPI = async () => {
@@ -41,8 +41,8 @@ export default function UrlExtractor() {
     try {
       console.log('Initializing Google API client...');
       const initOptions = {
-      apiKey: process.env.VITE_GOOGLE_API_KEY,
-      clientId: process.env.VITE_GOOGLE_CLIENT_ID,
+      apiKey: import.meta.env.VITE_GOOGLE_API_KEY,
+      clientId: import.meta.env.VITE_GOOGLE_CLIENT_ID,
       discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4'],
       scope: 'https://www.googleapis.com/auth/spreadsheets'
     };
@@ -52,7 +52,7 @@ export default function UrlExtractor() {
       
       // Initialize auth2 explicitly
       await window.gapi.auth2.init({
-        client_id: process.env.VITE_GOOGLE_CLIENT_ID
+        client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID
       });
       
       const auth = window.gapi.auth2.getAuthInstance();
