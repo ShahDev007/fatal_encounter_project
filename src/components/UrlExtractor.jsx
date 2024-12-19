@@ -8,43 +8,92 @@ export default function UrlExtractor() {
   const [isLoading, setIsLoading] = useState(false);
   const [existingFile, setExistingFile] = useState(null);
   const [isGoogleAuthed, setIsGoogleAuthed] = useState(false);
-  const SPREADSHEET_ID = process.env.REACT_APP_GOOGLE_SHEET_ID;
+  const SPREADSHEET_ID = import.meta.env.VITE_GOOGLE_SHEET_ID;
 
   useEffect(() => {
+    const loadGoogleAPI = async () => {
+      try {
+        // Load the Google API script
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://apis.google.com/js/api.js';
+          script.onload = resolve;
+          script.onerror = reject;
+          document.body.appendChild(script);
+        });
+
+        // Load the client and auth2 libraries
+        await new Promise((resolve, reject) => {
+          window.gapi.load('client:auth2', resolve);
+        });
+
+        await initClient();
+      } catch (error) {
+        console.error('Error loading Google API:', error);
+        setError('Failed to load Google API: ' + error.message);
+      }
+    };
+
     loadGoogleAPI();
   }, []);
 
-  const loadGoogleAPI = () => {
-    const script = document.createElement('script');
-    script.src = 'https://apis.google.com/js/api.js';
-    script.onload = () => {
-      window.gapi.load('client:auth2', initClient);
-    };
-    document.body.appendChild(script);
-  };
-
-  const initClient = () => {
-    window.gapi.client.init({
+  const initClient = async () => {
+    try {
+      console.log('Initializing Google API client...');
+      const initOptions = {
       apiKey: process.env.REACT_APP_GOOGLE_API_KEY,
       clientId: process.env.REACT_APP_GOOGLE_CLIENT_ID,
       discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4'],
       scope: 'https://www.googleapis.com/auth/spreadsheets'
-    }).then(() => {
-      window.gapi.auth2.getAuthInstance().isSignedIn.listen(updateSigninStatus);
-      updateSigninStatus(window.gapi.auth2.getAuthInstance().isSignedIn.get());
-    }).catch(error => {
+    };
+      
+      console.log('Init options:', initOptions);
+      await window.gapi.client.init(initOptions);
+      
+      // Initialize auth2 explicitly
+      await window.gapi.auth2.init({
+        client_id: process.env.REACT_APP_GOOGLE_CLIENT_ID
+      });
+      
+      const auth = window.gapi.auth2.getAuthInstance();
+      if (!auth) {
+        throw new Error('Failed to get auth instance');
+      }
+      
+      auth.isSignedIn.listen(updateSigninStatus);
+      updateSigninStatus(auth.isSignedIn.get());
+      
+      console.log('Google API client initialized successfully');
+    } catch (error) {
       console.error('Error initializing Google API client:', error);
-      setError('Failed to initialize Google API client');
-    });
+      setError('Failed to initialize Google API client: ' + error.message);
+    }
   };
 
   const updateSigninStatus = (isSignedIn) => {
     setIsGoogleAuthed(isSignedIn);
   };
 
-  const handleGoogleAuth = () => {
-    if (!isGoogleAuthed) {
-      window.gapi.auth2.getAuthInstance().signIn();
+  const handleGoogleAuth = async () => {
+    try {
+      if (!window.gapi || !window.gapi.auth2) {
+        console.error('Google API not loaded');
+        setError('Google API not initialized properly. Please refresh the page.');
+        return;
+      }
+
+      const auth = window.gapi.auth2.getAuthInstance();
+      if (!auth) {
+        console.error('Auth instance not found');
+        setError('Authentication service not initialized properly.');
+        return;
+      }
+
+      await auth.signIn();
+      console.log('Sign in successful');
+    } catch (error) {
+      console.error('Sign in error:', error);
+      setError('Failed to sign in with Google: ' + error.message);
     }
   };
 
