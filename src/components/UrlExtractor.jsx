@@ -123,7 +123,7 @@ export default function UrlExtractor() {
       // Append the new data
       const values = [Object.values(dataObject)];
       const appendResponse = await fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${sheetName}!A${nextRow}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+        `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${sheetName}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
         {
           method: 'POST',
           headers: {
@@ -132,12 +132,11 @@ export default function UrlExtractor() {
           },
           body: JSON.stringify({
             majorDimension: "ROWS",
-            range: `${sheetName}!A${nextRow}`,
-            values: values
-          })
+            values: values, // Your data to append
+          }),
         }
       );
-
+      
       if (!appendResponse.ok) {
         const errorText = await appendResponse.text();
         console.error('Append Error:', errorText);
