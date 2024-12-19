@@ -70,7 +70,7 @@ export default function UrlExtractor() {
       dataObject['Extraction Date'] = new Date().toLocaleString();
       dataObject['Source URL'] = url;
 
-      const sheetName = encodeURIComponent('Police Homicide Data Update');
+      const sheetName = encodeURIComponent('Sheet1');
 
       // First, get the current data to find the next empty row
       console.log('Making API request with:', {
@@ -117,16 +117,17 @@ export default function UrlExtractor() {
       // Append the new data
       const values = [Object.values(dataObject)];
       const appendResponse = await fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${sheetName}!A:A:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+        `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${sheetName}!A${nextRow}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
         {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${accessToken}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ 
-            values,
-            range: `${sheetName}!A:A`
+          body: JSON.stringify({
+            majorDimension: "ROWS",
+            range: `${sheetName}!A${nextRow}`,
+            values: values
           })
         }
       );
