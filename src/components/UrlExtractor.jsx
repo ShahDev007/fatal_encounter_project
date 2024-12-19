@@ -41,8 +41,8 @@ export default function UrlExtractor() {
     try {
       console.log('Initializing Google API client...');
       const initOptions = {
-      apiKey: process.env.REACT_APP_GOOGLE_API_KEY,
-      clientId: process.env.REACT_APP_GOOGLE_CLIENT_ID,
+      apiKey: process.env.VITE_GOOGLE_API_KEY,
+      clientId: process.env.VITE_GOOGLE_CLIENT_ID,
       discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4'],
       scope: 'https://www.googleapis.com/auth/spreadsheets'
     };
@@ -52,7 +52,7 @@ export default function UrlExtractor() {
       
       // Initialize auth2 explicitly
       await window.gapi.auth2.init({
-        client_id: process.env.REACT_APP_GOOGLE_CLIENT_ID
+        client_id: process.env.VITE_GOOGLE_CLIENT_ID
       });
       
       const auth = window.gapi.auth2.getAuthInstance();
